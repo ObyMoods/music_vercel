@@ -1,7 +1,7 @@
 const querystring = require('querystring');
 
 const client_id = "501054a922b747c0ad87d028e1ede74d";
-const redirect_uri = "https://xyroomusic.vercel.app/api/callback";
+const redirect_uri = "https://xyroomusic.vercel.app/api/auth";
 
 const generateRandomString = (length) => {
     let text = '';
