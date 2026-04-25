@@ -1,6 +1,12 @@
 {
-  "name": "music-player",
+  "name": "spotify-music-player",
   "version": "1.0.0",
-  "description": "Music Player for Vercel",
-  "main": "api/songs.js"
+  "description": "Spotify Music Player",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "querystring": "^0.2.1"
+  }
 }
