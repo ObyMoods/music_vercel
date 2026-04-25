@@ -1,0 +1,6 @@
+{
+  "name": "music-player",
+  "version": "1.0.0",
+  "description": "Music Player for Vercel",
+  "main": "api/songs.js"
+}
