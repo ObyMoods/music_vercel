@@ -1,123 +1,476 @@
-let songs = [];
-let currentIndex = 0;
+// Global variables
+let accessToken = null;
+let refreshToken = null;
+let currentTrack = null;
 let isPlaying = false;
+let currentDeviceId = null;
 let isShuffle = false;
 let isRepeat = false;
-const audio = document.getElementById('audio');
 
 // DOM Elements
-const homePage = document.getElementById('homePage');
-const searchPage = document.getElementById('searchPage');
-const libraryPage = document.getElementById('libraryPage');
-const profilePage = document.getElementById('profilePage');
+const loginScreen = document.getElementById('loginScreen');
+const mainApp = document.getElementById('mainApp');
+const loginBtn = document.getElementById('loginBtn');
+const logoutBtn = document.getElementById('logoutBtn');
 const navItems = document.querySelectorAll('.nav-item');
 const miniPlayer = document.getElementById('miniPlayer');
 const fullPlayer = document.getElementById('fullPlayer');
-const miniPlayPause = document.getElementById('miniPlayPauseBtn');
-const miniPrev = document.getElementById('miniPrevBtn');
-const miniNext = document.getElementById('miniNextBtn');
-const fullPlayPause = document.getElementById('fullPlayPauseBtn');
-const fullPrev = document.getElementById('fullPrevBtn');
-const fullNext = document.getElementById('fullNextBtn');
-const fullShuffle = document.getElementById('fullShuffleBtn');
-const fullRepeat = document.getElementById('fullRepeatBtn');
-const fullProgressBar = document.getElementById('fullProgressBar');
-const fullProgressFill = document.getElementById('fullProgressFill');
-const fullCurrentTime = document.getElementById('fullCurrentTime');
-const fullTotalTime = document.getElementById('fullTotalTime');
-const fullVolumeSlider = document.getElementById('fullVolumeSlider');
-const fullVolumeBtn = document.getElementById('fullVolumeBtn');
-const miniTitle = document.getElementById('miniTitle');
-const miniArtist = document.getElementById('miniArtist');
-const miniCover = document.getElementById('miniCover');
-const fullTitle = document.getElementById('fullTitle');
-const fullArtist = document.getElementById('fullArtist');
-const fullCover = document.getElementById('fullCover');
-const closePlayerBtn = document.getElementById('closePlayerBtn');
-const searchInput = document.getElementById('searchInput');
-const searchResults = document.getElementById('searchResults');
+const audio = document.getElementById('audio');
 
-// Load songs from API
-async function loadSongs() {
-    try {
-        const res = await fetch('/api/songs');
-        songs = await res.json();
-        renderAll();
-        playSong(0);
-    } catch (error) {
-        console.error('Error loading songs:', error);
-        // Fallback: coba load dari file lokal
-        const fallbackRes = await fetch('/data/songs.json');
-        songs = await fallbackRes.json();
-        renderAll();
-        playSong(0);
+// Check URL for tokens
+function checkUrlForToken() {
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    let token = params.get('access_token') || urlParams.get('access_token');
+    let refresh = params.get('refresh_token') || urlParams.get('refresh_token');
+    
+    if (token) {
+        accessToken = token;
+        refreshToken = refresh;
+        localStorage.setItem('spotify_access_token', accessToken);
+        localStorage.setItem('spotify_refresh_token', refreshToken);
+        window.history.pushState({}, document.title, "/");
+        initApp();
+    } else {
+        const savedToken = localStorage.getItem('spotify_access_token');
+        if (savedToken) {
+            accessToken = savedToken;
+            refreshToken = localStorage.getItem('spotify_refresh_token');
+            initApp();
+        }
     }
 }
 
-function renderAll() {
-    const rossaSongs = songs.filter(s => s.album === 'Platinum Collection Rossa');
-    document.getElementById('rossaTracklist').innerHTML = rossaSongs.map((song, i) => `
-        <div class="track-item" onclick="playById(${song.id})">
-            <div class="track-num">${i + 1}</div>
-            <div class="track-info">
-                <div class="title">${escapeHtml(song.title)}</div>
-                <div class="artist">${escapeHtml(song.artist)}</div>
-            </div>
-            <div class="track-duration">${song.duration}</div>
-        </div>
-    `).join('');
-
-    const kangenSongs = songs.filter(s => s.album === 'Bintang 14 Hari');
-    document.getElementById('kangenTracklist').innerHTML = kangenSongs.map((song, i) => `
-        <div class="track-item" onclick="playById(${song.id})">
-            <div class="track-num">${i + 1}</div>
-            <div class="track-info">
-                <div class="title">${escapeHtml(song.title)}</div>
-                <div class="artist">${escapeHtml(song.artist)}</div>
-            </div>
-            <div class="track-duration">${song.duration}</div>
-        </div>
-    `).join('');
-
-    const viralSongs = songs.filter(s => s.album === 'Lagu Viral TRENDING 2026');
-    document.getElementById('viralScroll').innerHTML = viralSongs.map(song => `
-        <div class="music-card" onclick="playById(${song.id})">
-            <div class="music-card-img"><img src="/images/${song.cover}" onerror="this.src='/images/default.jpg'"></div>
-            <h4>${escapeHtml(song.title)}</h4>
-            <p>${escapeHtml(song.artist)}</p>
-        </div>
-    `).join('');
-
-    const galauSongs = songs.filter(s => s.album === 'Lagu Galau BRUTAL 2026');
-    document.getElementById('galauScroll').innerHTML = galauSongs.map(song => `
-        <div class="music-card" onclick="playById(${song.id})">
-            <div class="music-card-img"><img src="/images/${song.cover}" onerror="this.src='/images/default.jpg'"></div>
-            <h4>${escapeHtml(song.title)}</h4>
-            <p>${escapeHtml(song.artist)}</p>
-        </div>
-    `).join('');
-
-    const favoriteSongs = songs.filter(s => s.album === 'My Favorite');
-    document.getElementById('favoriteScroll').innerHTML = favoriteSongs.map(song => `
-        <div class="music-card" onclick="playById(${song.id})">
-            <div class="music-card-img"><img src="/images/${song.cover}" onerror="this.src='/images/default.jpg'"></div>
-            <h4>${escapeHtml(song.title)}</h4>
-            <p>${escapeHtml(song.artist)}</p>
-        </div>
-    `).join('');
-
-    // Library content
-    const albums = [...new Map(songs.map(s => [s.album, s.cover])).entries()];
-    document.getElementById('libraryContent').innerHTML = albums.map(([album, cover]) => `
-        <div class="music-card" onclick="searchAlbum('${escapeHtml(album)}')">
-            <div class="music-card-img"><img src="/images/${cover}" onerror="this.src='/images/default.jpg'"></div>
-            <h4>${escapeHtml(album)}</h4>
-            <p>Album</p>
-        </div>
-    `).join('');
+// Refresh token
+async function refreshAccessToken() {
+    try {
+        const response = await fetch(`/api/token?refresh_token=${refreshToken}`);
+        const data = await response.json();
+        accessToken = data.access_token;
+        localStorage.setItem('spotify_access_token', accessToken);
+        return accessToken;
+    } catch (error) {
+        console.error('Failed to refresh token:', error);
+        logout();
+    }
 }
 
+// API calls with auto-refresh
+async function fetchApi(url, options = {}) {
+    const makeRequest = async (token) => {
+        return fetch(url, {
+            ...options,
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        });
+    };
+    
+    let response = await makeRequest(accessToken);
+    
+    if (response.status === 401 && refreshToken) {
+        await refreshAccessToken();
+        response = await makeRequest(accessToken);
+    }
+    
+    return response;
+}
+
+// Initialize app after login
+async function initApp() {
+    loginScreen.style.display = 'none';
+    mainApp.style.display = 'flex';
+    
+    await getUserProfile();
+    await getTopTracks();
+    await getUserPlaylists();
+    await getTopArtists();
+    await getFeaturedPlaylists();
+}
+
+// Get user profile
+async function getUserProfile() {
+    try {
+        const response = await fetchApi('https://api.spotify.com/v1/me');
+        const user = await response.json();
+        
+        document.getElementById('welcomeName').innerHTML = `Selamat Datang, ${user.display_name || 'User'}`;
+        document.getElementById('profileName').textContent = user.display_name || 'User';
+        document.getElementById('profileEmail').textContent = user.email || '';
+        document.getElementById('profileFollowers').textContent = `Followers: ${user.followers?.total || 0}`;
+        
+        if (user.images && user.images[0]) {
+            document.getElementById('userAvatar').src = user.images[0].url;
+            document.getElementById('profileAvatar').src = user.images[0].url;
+        }
+    } catch (error) {
+        console.error('Error getting user profile:', error);
+    }
+}
+
+// Get top tracks
+async function getTopTracks() {
+    try {
+        const response = await fetchApi('https://api.spotify.com/v1/me/top/tracks?limit=10&time_range=short_term');
+        const data = await response.json();
+        
+        const container = document.getElementById('topTracks');
+        container.innerHTML = data.items.map(track => `
+            <div class="music-card" onclick="playTrack('${track.id}')">
+                <div class="card-img">
+                    <img src="${track.album.images[0]?.url || ''}" alt="${track.name}">
+                </div>
+                <div class="card-title">${escapeHtml(track.name)}</div>
+                <div class="card-subtitle">${escapeHtml(track.artists[0].name)}</div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error getting top tracks:', error);
+    }
+}
+
+// Get user playlists
+async function getUserPlaylists() {
+    try {
+        const response = await fetchApi('https://api.spotify.com/v1/me/playlists?limit=10');
+        const data = await response.json();
+        
+        const container = document.getElementById('userPlaylists');
+        container.innerHTML = data.items.map(playlist => `
+            <div class="playlist-card" onclick="getPlaylistTracks('${playlist.id}', '${escapeHtml(playlist.name)}')">
+                <div class="card-img">
+                    <img src="${playlist.images[0]?.url || ''}" alt="${playlist.name}">
+                </div>
+                <div class="card-title">${escapeHtml(playlist.name)}</div>
+                <div class="card-subtitle">${playlist.tracks.total} lagu</div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error getting playlists:', error);
+    }
+}
+
+// Get top artists
+async function getTopArtists() {
+    try {
+        const response = await fetchApi('https://api.spotify.com/v1/me/top/artists?limit=10');
+        const data = await response.json();
+        
+        const container = document.getElementById('topArtists');
+        container.innerHTML = data.items.map(artist => `
+            <div class="artist-card" onclick="getArtistTopTracks('${artist.id}', '${escapeHtml(artist.name)}')">
+                <div class="card-img">
+                    <img src="${artist.images[0]?.url || ''}" alt="${artist.name}">
+                </div>
+                <div class="card-title">${escapeHtml(artist.name)}</div>
+                <div class="card-subtitle">Artist</div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error getting top artists:', error);
+    }
+}
+
+// Get featured playlists
+async function getFeaturedPlaylists() {
+    try {
+        const response = await fetchApi('https://api.spotify.com/v1/browse/featured-playlists?limit=10');
+        const data = await response.json();
+        
+        const container = document.getElementById('featuredPlaylists');
+        container.innerHTML = data.playlists.items.map(playlist => `
+            <div class="playlist-card" onclick="getPlaylistTracks('${playlist.id}', '${escapeHtml(playlist.name)}')">
+                <div class="card-img">
+                    <img src="${playlist.images[0]?.url || ''}" alt="${playlist.name}">
+                </div>
+                <div class="card-title">${escapeHtml(playlist.name)}</div>
+                <div class="card-subtitle">${playlist.owner.display_name}</div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error getting featured playlists:', error);
+    }
+}
+
+// Play track
+window.playTrack = async function(trackId, trackName, trackArtist, trackImage) {
+    try {
+        // Get available devices
+        const devicesRes = await fetchApi('https://api.spotify.com/v1/me/player/devices');
+        const devices = await devicesRes.json();
+        
+        if (devices.devices && devices.devices.length > 0) {
+            currentDeviceId = devices.devices[0].id;
+            
+            // Play on device
+            await fetchApi(`https://api.spotify.com/v1/me/player/play?device_id=${currentDeviceId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ uris: [`spotify:track:${trackId}`] })
+            });
+            
+            // Get track info
+            const trackRes = await fetchApi(`https://api.spotify.com/v1/tracks/${trackId}`);
+            const track = await trackRes.json();
+            
+            currentTrack = track;
+            updatePlayerUI(track);
+            isPlaying = true;
+            updatePlayButtons(true);
+            miniPlayer.style.display = 'flex';
+        } else {
+            // Fallback: play via audio element (preview only)
+            const trackRes = await fetchApi(`https://api.spotify.com/v1/tracks/${trackId}`);
+            const track = await trackRes.json();
+            
+            currentTrack = track;
+            updatePlayerUI(track);
+            
+            if (track.preview_url) {
+                audio.src = track.preview_url;
+                audio.play();
+                isPlaying = true;
+                updatePlayButtons(true);
+                miniPlayer.style.display = 'flex';
+            } else {
+                alert('No preview available. Open Spotify app to play full track.');
+            }
+        }
+    } catch (error) {
+        console.error('Error playing track:', error);
+        alert('Please open Spotify app on your device first, then try again.');
+    }
+};
+
+// Get playlist tracks
+window.getPlaylistTracks = async function(playlistId, playlistName) {
+    try {
+        const response = await fetchApi(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=20`);
+        const data = await response.json();
+        
+        const searchResults = document.getElementById('searchResults');
+        searchResults.innerHTML = `
+            <div class="section-header">
+                <h2>${escapeHtml(playlistName)}</h2>
+                <button class="see-more" onclick="document.querySelector('[data-page=\'home\']').click()">Kembali</button>
+            </div>
+            ${data.items.map((item, i) => `
+                <div class="track-item" onclick="playTrack('${item.track.id}', '${escapeHtml(item.track.name)}', '${escapeHtml(item.track.artists[0].name)}', '${item.track.album.images[0]?.url || ''}')">
+                    <div class="track-num">${i + 1}</div>
+                    <div class="track-info">
+                        <div class="track-title">${escapeHtml(item.track.name)}</div>
+                        <div class="track-artist">${escapeHtml(item.track.artists[0].name)}</div>
+                    </div>
+                    <div class="track-duration">${formatDuration(item.track.duration_ms)}</div>
+                </div>
+            `).join('')}
+        `;
+        
+        document.querySelector('[data-page="search"]').click();
+        document.getElementById('searchInput').value = playlistName;
+    } catch (error) {
+        console.error('Error getting playlist tracks:', error);
+    }
+};
+
+// Get artist top tracks
+window.getArtistTopTracks = async function(artistId, artistName) {
+    try {
+        const response = await fetchApi(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=ID`);
+        const data = await response.json();
+        
+        const searchResults = document.getElementById('searchResults');
+        searchResults.innerHTML = `
+            <div class="section-header">
+                <h2>Top Lagu - ${escapeHtml(artistName)}</h2>
+                <button class="see-more" onclick="document.querySelector('[data-page=\'home\']').click()">Kembali</button>
+            </div>
+            ${data.tracks.map((track, i) => `
+                <div class="track-item" onclick="playTrack('${track.id}', '${escapeHtml(track.name)}', '${escapeHtml(track.artists[0].name)}', '${track.album.images[0]?.url || ''}')">
+                    <div class="track-num">${i + 1}</div>
+                    <div class="track-info">
+                        <div class="track-title">${escapeHtml(track.name)}</div>
+                        <div class="track-artist">${escapeHtml(track.artists[0].name)}</div>
+                    </div>
+                    <div class="track-duration">${formatDuration(track.duration_ms)}</div>
+                </div>
+            `).join('')}
+        `;
+        
+        document.querySelector('[data-page="search"]').click();
+        document.getElementById('searchInput').value = artistName;
+    } catch (error) {
+        console.error('Error getting artist top tracks:', error);
+    }
+};
+
+// Search
+async function searchMusic() {
+    const query = document.getElementById('searchInput').value.trim();
+    if (!query) {
+        document.getElementById('searchResults').innerHTML = '';
+        return;
+    }
+    
+    try {
+        const response = await fetchApi(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track,artist,playlist&limit=20`);
+        const data = await response.json();
+        
+        let html = '';
+        
+        if (data.tracks && data.tracks.items.length > 0) {
+            html += `<div class="section-header"><h2>Lagu</h2></div>`;
+            html += data.tracks.items.map((track, i) => `
+                <div class="track-item" onclick="playTrack('${track.id}', '${escapeHtml(track.name)}', '${escapeHtml(track.artists[0].name)}', '${track.album.images[0]?.url || ''}')">
+                    <div class="track-num">${i + 1}</div>
+                    <div class="track-info">
+                        <div class="track-title">${escapeHtml(track.name)}</div>
+                        <div class="track-artist">${escapeHtml(track.artists[0].name)}</div>
+                    </div>
+                    <div class="track-duration">${formatDuration(track.duration_ms)}</div>
+                </div>
+            `).join('');
+        }
+        
+        if (data.artists && data.artists.items.length > 0) {
+            html += `<div class="section-header"><h2>Artis</h2></div>`;
+            html += `<div class="horizontal-scroll">`;
+            html += data.artists.items.map(artist => `
+                <div class="artist-card" onclick="getArtistTopTracks('${artist.id}', '${escapeHtml(artist.name)}')">
+                    <div class="card-img">
+                        <img src="${artist.images[0]?.url || ''}" alt="${artist.name}">
+                    </div>
+                    <div class="card-title">${escapeHtml(artist.name)}</div>
+                    <div class="card-subtitle">Artist</div>
+                </div>
+            `).join('');
+            html += `</div>`;
+        }
+        
+        if (data.playlists && data.playlists.items.length > 0) {
+            html += `<div class="section-header"><h2>Playlist</h2></div>`;
+            html += `<div class="horizontal-scroll">`;
+            html += data.playlists.items.map(playlist => `
+                <div class="playlist-card" onclick="getPlaylistTracks('${playlist.id}', '${escapeHtml(playlist.name)}')">
+                    <div class="card-img">
+                        <img src="${playlist.images[0]?.url || ''}" alt="${playlist.name}">
+                    </div>
+                    <div class="card-title">${escapeHtml(playlist.name)}</div>
+                    <div class="card-subtitle">${playlist.tracks.total} lagu</div>
+                </div>
+            `).join('');
+            html += `</div>`;
+        }
+        
+        if (html === '') {
+            html = '<div style="text-align:center;color:#888;padding:40px;">Tidak ditemukan</div>';
+        }
+        
+        document.getElementById('searchResults').innerHTML = html;
+    } catch (error) {
+        console.error('Error searching:', error);
+    }
+}
+
+// Update player UI
+function updatePlayerUI(track) {
+    const title = track.name;
+    const artist = track.artists.map(a => a.name).join(', ');
+    const image = track.album.images[0]?.url || '';
+    
+    document.getElementById('miniTitle').textContent = title;
+    document.getElementById('miniArtist').textContent = artist;
+    document.getElementById('miniCover').src = image;
+    document.getElementById('fullTitle').textContent = title;
+    document.getElementById('fullArtist').textContent = artist;
+    document.getElementById('fullCover').src = image;
+}
+
+// Player controls
+function updatePlayButtons(playing) {
+    const playIcon = `<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+    const pauseIcon = `<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+    
+    document.getElementById('miniPlayPauseBtn').innerHTML = playing ? pauseIcon : playIcon;
+    document.getElementById('fullPlayPauseBtn').innerHTML = playing ? pauseIcon : playIcon;
+}
+
+function togglePlay() {
+    if (currentDeviceId) {
+        fetchApi(`https://api.spotify.com/v1/me/player/${isPlaying ? 'pause' : 'play'}?device_id=${currentDeviceId}`, {
+            method: 'PUT'
+        }).catch(e => console.error('Error:', e));
+    } else if (audio.src) {
+        if (isPlaying) {
+            audio.pause();
+        } else {
+            audio.play();
+        }
+    }
+    isPlaying = !isPlaying;
+    updatePlayButtons(isPlaying);
+}
+
+function nextSong() {
+    if (currentDeviceId) {
+        fetchApi('https://api.spotify.com/v1/me/player/next', { method: 'POST' });
+    }
+}
+
+function prevSong() {
+    if (currentDeviceId) {
+        fetchApi('https://api.spotify.com/v1/me/player/previous', { method: 'POST' });
+    }
+}
+
+function toggleShuffle() {
+    isShuffle = !isShuffle;
+    if (currentDeviceId) {
+        fetchApi(`https://api.spotify.com/v1/me/player/shuffle?state=${isShuffle}`, { method: 'PUT' });
+    }
+    document.getElementById('fullShuffleBtn').style.color = isShuffle ? '#1DB954' : '#fff';
+}
+
+function toggleRepeat() {
+    isRepeat = !isRepeat;
+    if (currentDeviceId) {
+        const state = isRepeat ? 'context' : 'off';
+        fetchApi(`https://api.spotify.com/v1/me/player/repeat?state=${state}`, { method: 'PUT' });
+    }
+    document.getElementById('fullRepeatBtn').style.color = isRepeat ? '#1DB954' : '#fff';
+}
+
+function setVolume(e) {
+    const volume = e.target.value;
+    audio.volume = volume;
+    if (currentDeviceId) {
+        fetchApi(`https://api.spotify.com/v1/me/player/volume?volume_percent=${volume * 100}`, { method: 'PUT' });
+    }
+}
+
+function openFullPlayer() {
+    fullPlayer.classList.add('open');
+}
+
+function closeFullPlayer() {
+    fullPlayer.classList.remove('open');
+}
+
+function logout() {
+    localStorage.removeItem('spotify_access_token');
+    localStorage.removeItem('spotify_refresh_token');
+    accessToken = null;
+    refreshToken = null;
+    loginScreen.style.display = 'flex';
+    mainApp.style.display = 'none';
+}
+
+// Helper functions
 function escapeHtml(str) {
+    if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
         if (m === '&') return '&amp;';
         if (m === '<') return '&lt;';
@@ -126,159 +479,10 @@ function escapeHtml(str) {
     });
 }
 
-window.playById = function(id) {
-    const idx = songs.findIndex(s => s.id === id);
-    if (idx !== -1) playSong(idx);
-};
-
-function searchAlbum(album) {
-    searchInput.value = album;
-    searchMusic();
-    document.querySelector('[data-page="search"]').click();
-}
-
-function playSong(index) {
-    currentIndex = index;
-    const song = songs[currentIndex];
-    audio.src = `/audio/${song.audioFile}`;
-    
-    miniTitle.textContent = song.title;
-    miniArtist.textContent = song.artist;
-    miniCover.src = `/images/${song.cover}`;
-    fullTitle.textContent = song.title;
-    fullArtist.textContent = song.artist;
-    fullCover.src = `/images/${song.cover}`;
-    
-    audio.play().catch(e => console.log('Auto-play prevented:', e));
-    isPlaying = true;
-    updatePlayButtons(true);
-    miniPlayer.style.display = 'flex';
-    
-    document.querySelectorAll('.track-item').forEach(item => item.classList.remove('active'));
-    const activeTrack = document.querySelectorAll('.track-item')[currentIndex];
-    if (activeTrack) activeTrack.classList.add('active');
-}
-
-function updatePlayButtons(playing) {
-    const playIcon = `<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
-    const pauseIcon = `<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
-    
-    if (miniPlayPause) miniPlayPause.innerHTML = playing ? pauseIcon : playIcon;
-    if (fullPlayPause) fullPlayPause.innerHTML = playing ? pauseIcon : playIcon;
-}
-
-function togglePlay() {
-    if (isPlaying) {
-        audio.pause();
-        updatePlayButtons(false);
-    } else {
-        audio.play();
-        updatePlayButtons(true);
-    }
-    isPlaying = !isPlaying;
-}
-
-function nextSong() {
-    if (isShuffle) {
-        currentIndex = Math.floor(Math.random() * songs.length);
-    } else {
-        currentIndex = (currentIndex + 1) % songs.length;
-    }
-    playSong(currentIndex);
-}
-
-function prevSong() {
-    if (audio.currentTime > 3) {
-        audio.currentTime = 0;
-    } else {
-        currentIndex = (currentIndex - 1 + songs.length) % songs.length;
-        playSong(currentIndex);
-    }
-}
-
-function updateProgress() {
-    if (audio.duration) {
-        const percent = (audio.currentTime / audio.duration) * 100;
-        if (fullProgressFill) fullProgressFill.style.width = `${percent}%`;
-        
-        const curMin = Math.floor(audio.currentTime / 60);
-        const curSec = Math.floor(audio.currentTime % 60);
-        if (fullCurrentTime) fullCurrentTime.textContent = `${curMin}:${curSec.toString().padStart(2, '0')}`;
-        
-        const totMin = Math.floor(audio.duration / 60);
-        const totSec = Math.floor(audio.duration % 60);
-        if (fullTotalTime) fullTotalTime.textContent = `${totMin}:${totSec.toString().padStart(2, '0')}`;
-    }
-}
-
-function setProgress(e) {
-    const rect = fullProgressBar.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    audio.currentTime = percent * audio.duration;
-}
-
-function setVolume(e) {
-    audio.volume = e.target.value;
-    const volumeIcon = audio.volume === 0 ? 
-        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><line x1="4" y1="4" x2="20" y2="20"/><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>` :
-        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
-    if (fullVolumeBtn) fullVolumeBtn.innerHTML = volumeIcon;
-}
-
-function toggleShuffle() {
-    isShuffle = !isShuffle;
-    if (fullShuffle) fullShuffle.style.color = isShuffle ? '#1DB954' : '#fff';
-}
-
-function toggleRepeat() {
-    isRepeat = !isRepeat;
-    if (fullRepeat) fullRepeat.style.color = isRepeat ? '#1DB954' : '#fff';
-}
-
-function onEnded() {
-    if (isRepeat) {
-        audio.currentTime = 0;
-        audio.play();
-    } else {
-        nextSong();
-    }
-}
-
-function openFullPlayer() {
-    if (fullPlayer) fullPlayer.classList.add('open');
-}
-
-function closeFullPlayer() {
-    if (fullPlayer) fullPlayer.classList.remove('open');
-}
-
-function searchMusic() {
-    const query = searchInput.value.toLowerCase();
-    if (!query) {
-        searchResults.innerHTML = '';
-        return;
-    }
-    
-    const filtered = songs.filter(s => 
-        s.title.toLowerCase().includes(query) || 
-        s.artist.toLowerCase().includes(query) ||
-        s.album.toLowerCase().includes(query)
-    );
-    
-    searchResults.innerHTML = filtered.map((song, i) => `
-        <div class="track-item" onclick="playById(${song.id})">
-            <div class="track-num">${i + 1}</div>
-            <div class="track-info">
-                <div class="title">${escapeHtml(song.title)}</div>
-                <div class="artist">${escapeHtml(song.artist)}</div>
-            </div>
-            <div class="track-duration">${song.duration}</div>
-        </div>
-    `).join('');
-    
-    if (filtered.length === 0) {
-        searchResults.innerHTML = '<div style="text-align:center;color:#888;padding:40px;">Lagu tidak ditemukan</div>';
-    }
+function formatDuration(ms) {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = ((ms % 60000) / 1000).toFixed(0);
+    return `${minutes}:${seconds.padStart(2, '0')}`;
 }
 
 // Navigation
@@ -287,64 +491,46 @@ navItems.forEach(item => {
         const page = item.dataset.page;
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        const targetPage = document.getElementById(`${page}Page`);
-        if (targetPage) targetPage.classList.add('active');
+        document.getElementById(`${page}Page`).classList.add('active');
         item.classList.add('active');
-        
-        if (page === 'search' && searchInput) {
-            searchInput.focus();
-        }
-    });
-});
-
-// Library tabs
-document.querySelectorAll('.lib-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-        document.querySelectorAll('.lib-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
     });
 });
 
 // Event listeners
-if (miniPlayPause) miniPlayPause.addEventListener('click', (e) => { e.stopPropagation(); togglePlay(); });
-if (miniPrev) miniPrev.addEventListener('click', (e) => { e.stopPropagation(); prevSong(); });
-if (miniNext) miniNext.addEventListener('click', (e) => { e.stopPropagation(); nextSong(); });
-if (fullPlayPause) fullPlayPause.addEventListener('click', togglePlay);
-if (fullPrev) fullPrev.addEventListener('click', prevSong);
-if (fullNext) fullNext.addEventListener('click', nextSong);
-if (fullShuffle) fullShuffle.addEventListener('click', toggleShuffle);
-if (fullRepeat) fullRepeat.addEventListener('click', toggleRepeat);
-if (fullProgressBar) fullProgressBar.addEventListener('click', setProgress);
-if (fullVolumeSlider) fullVolumeSlider.addEventListener('input', setVolume);
-if (closePlayerBtn) closePlayerBtn.addEventListener('click', closeFullPlayer);
-if (miniPlayer) miniPlayer.addEventListener('click', openFullPlayer);
-if (searchInput) searchInput.addEventListener('input', searchMusic);
-
-const playRossaBtn = document.getElementById('playRossaBtn');
-if (playRossaBtn) {
-    playRossaBtn.addEventListener('click', () => {
-        const rossaSongs = songs.filter(s => s.album === 'Platinum Collection Rossa');
-        if (rossaSongs.length) playById(rossaSongs[0].id);
-    });
-}
-
-const playKangenBtn = document.getElementById('playKangenBtn');
-if (playKangenBtn) {
-    playKangenBtn.addEventListener('click', () => {
-        const kangenSongs = songs.filter(s => s.album === 'Bintang 14 Hari');
-        if (kangenSongs.length) playById(kangenSongs[0].id);
-    });
-}
-
-document.querySelectorAll('.see-more').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const searchNav = document.querySelector('[data-page="search"]');
-        if (searchNav) searchNav.click();
-    });
+loginBtn.addEventListener('click', () => {
+    window.location.href = '/api/auth';
 });
 
-audio.addEventListener('timeupdate', updateProgress);
-audio.addEventListener('ended', onEnded);
+logoutBtn.addEventListener('click', logout);
 
-// Start app
-loadSongs();
+document.getElementById('searchInput')?.addEventListener('input', searchMusic);
+document.getElementById('miniPlayPauseBtn')?.addEventListener('click', (e) => { e.stopPropagation(); togglePlay(); });
+document.getElementById('miniPrevBtn')?.addEventListener('click', (e) => { e.stopPropagation(); prevSong(); });
+document.getElementById('miniNextBtn')?.addEventListener('click', (e) => { e.stopPropagation(); nextSong(); });
+document.getElementById('fullPlayPauseBtn')?.addEventListener('click', togglePlay);
+document.getElementById('fullPrevBtn')?.addEventListener('click', prevSong);
+document.getElementById('fullNextBtn')?.addEventListener('click', nextSong);
+document.getElementById('fullShuffleBtn')?.addEventListener('click', toggleShuffle);
+document.getElementById('fullRepeatBtn')?.addEventListener('click', toggleRepeat);
+document.getElementById('fullProgressBar')?.addEventListener('click', (e) => {});
+document.getElementById('fullVolumeSlider')?.addEventListener('input', setVolume);
+document.getElementById('closePlayerBtn')?.addEventListener('click', closeFullPlayer);
+document.getElementById('openFullPlayer')?.addEventListener('click', openFullPlayer);
+document.getElementById('miniPlayer')?.addEventListener('click', openFullPlayer);
+
+audio.addEventListener('timeupdate', () => {
+    if (audio.duration) {
+        const percent = (audio.currentTime / audio.duration) * 100;
+        document.getElementById('fullProgressFill').style.width = `${percent}%`;
+        document.getElementById('fullCurrentTime').textContent = formatDuration(audio.currentTime * 1000);
+        document.getElementById('fullTotalTime').textContent = formatDuration(audio.duration * 1000);
+    }
+});
+
+audio.addEventListener('ended', () => {
+    isPlaying = false;
+    updatePlayButtons(false);
+});
+
+// Start
+checkUrlForToken();
